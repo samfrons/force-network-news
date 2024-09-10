@@ -33,7 +33,7 @@ const SocialMediaVisualization = () => {
           title: item.title,
           link: item.link,
           pubDate: item.pubDate,
-          category: feed.category,
+          platform: feed.platform,
           engagement: Math.floor(Math.random() * 100) // Simulated engagement
         }));
       } catch (error) {
@@ -48,41 +48,39 @@ const SocialMediaVisualization = () => {
     };
 
     fetchAllFeeds();
-    const interval = setInterval(fetchAllFeeds, 60000); // Fetch every minute
+    const interval = setInterval(fetchAllFeeds, 30000); // Fetch every 30 seconds
 
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    if (!mountRef.current || posts.length === 0) return;
+    if (!mountRef.current) return;
 
+    // Scene setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
     mountRef.current.appendChild(renderer.domElement);
 
+    // Orbit controls
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
 
+    // Lights
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
     scene.add(directionalLight);
 
+    // Create spheres for posts
     const spheres = posts.map(post => {
-      const geometry = new THREE.SphereGeometry(post.engagement / 20 + 1, 32, 32);
-      const material = new THREE.MeshPhongMaterial({ 
-        color: COLORS[post.category],
-        transparent: true,
-        opacity: 0.7
-      });
+      const geometry = new THREE.SphereGeometry(post.engagement / 20, 32, 32);
+      const material = new THREE.MeshPhongMaterial({ color: COLORS[post.platform] });
       const sphere = new THREE.Mesh(geometry, material);
       sphere.position.set(
-        Math.random() * 200 - 100,
-        Math.random() * 200 - 100,
-        Math.random() * 200 - 100
+        Math.random() * 100 - 50,
+        Math.random() * 100 - 50,
+        Math.random() * 100 - 50
       );
       sphere.userData = post;
       return sphere;
@@ -90,30 +88,13 @@ const SocialMediaVisualization = () => {
 
     spheres.forEach(sphere => scene.add(sphere));
 
-    // Add connections between nodes
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.3 });
-    posts.forEach((post, index) => {
-      const relatedPosts = posts.filter((p, i) => 
-        i !== index && 
-        (p.category === post.category || 
-         new Date(p.pubDate).toDateString() === new Date(post.pubDate).toDateString())
-      );
+    camera.position.z = 100;
 
-      relatedPosts.forEach(relatedPost => {
-        const geometry = new THREE.BufferGeometry().setFromPoints([
-          spheres[index].position,
-          spheres[posts.indexOf(relatedPost)].position
-        ]);
-        const line = new THREE.Line(geometry, lineMaterial);
-        scene.add(line);
-      });
-    });
-
-    camera.position.z = 200;
-
+    // Raycaster for mouse interaction
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
+    // Mouse move event handler
     const onMouseMove = (event) => {
       mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -126,7 +107,7 @@ const SocialMediaVisualization = () => {
         setTooltip({
           content: `
             <strong>${post.title}</strong><br>
-            Category: ${post.category}<br>
+            Platform: ${post.platform}<br>
             Published: ${new Date(post.pubDate).toLocaleString()}<br>
             Engagement: ${post.engagement}
           `,
@@ -140,20 +121,15 @@ const SocialMediaVisualization = () => {
 
     window.addEventListener('mousemove', onMouseMove);
 
+    // Animation loop
     const animate = () => {
       requestAnimationFrame(animate);
-      
-      // Simple pulsating animation
-      spheres.forEach(sphere => {
-        sphere.scale.x = sphere.scale.y = sphere.scale.z = 
-          1 + 0.1 * Math.sin(Date.now() * 0.001 + sphere.position.x);
-      });
-
       controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
+    // Resize handler
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
@@ -161,6 +137,7 @@ const SocialMediaVisualization = () => {
     };
     window.addEventListener('resize', handleResize);
 
+    // Cleanup
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('resize', handleResize);
