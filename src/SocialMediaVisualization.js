@@ -2,6 +2,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import SettingsPanel from './SettingsPanel';
 
 const COLORS = {
   Technology: 0x4e79a7,
@@ -10,12 +11,6 @@ const COLORS = {
   Health: 0x76b7b2,
 };
 
-const RSS_FEEDS = [
-  { url: 'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml', category: 'Technology' },
-  { url: 'https://feeds.bbci.co.uk/news/business/rss.xml', category: 'Business' },
-  { url: 'https://www.sciencedaily.com/rss/top.xml', category: 'Science' },
-  { url: 'https://www.who.int/rss-feeds/news-english.xml', category: 'Health' },
-];
 
 const SocialMediaVisualization = () => {
   const mountRef = useRef(null);
@@ -23,7 +18,8 @@ const SocialMediaVisualization = () => {
   const [tooltip, setTooltip] = useState(null);
   const [timeFilter, setTimeFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [autoRotate, setAutoRotate] = useState(true);
+  const [autoRotate, setAutoRotate] = useState(true)
+  const materialsRef = useRef({});
   const [categoryVisibility, setCategoryVisibility] = useState({
     Technology: true,
     Business: true,
@@ -33,6 +29,14 @@ const SocialMediaVisualization = () => {
   const spheresRef = useRef([]);
   const sceneRef = useRef(null);
 
+const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+const [rssFeeds, setRssFeeds] = useState([
+    { url: 'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml', category: 'Technology' },
+    { url: 'https://feeds.bbci.co.uk/news/business/rss.xml', category: 'Business' },
+    { url: 'https://www.sciencedaily.com/rss/top.xml', category: 'Science' },
+    { url: 'https://www.who.int/rss-feeds/news-english.xml', category: 'Health' },
+  ]);
+const controlsRef = useRef(null);
   const debug = useCallback((message) => {
     console.log("Debug:", message);
   }, []);
@@ -120,6 +124,8 @@ const SocialMediaVisualization = () => {
       sceneRef.current.remove(sphere);
     });
 
+ materialsRef.current = {};
+
     var categoryPosition = {
       Technology: { x: -50, y: 50, z: 0 },
       Business: { x: 50, y: 50, z: 0 },
@@ -128,14 +134,25 @@ const SocialMediaVisualization = () => {
     };
 
 spheresRef.current = filteredPosts.map(function(post) {
-  var radius = (post.engagement / 100) * 3 + 1;
-  var geometry = new THREE.SphereGeometry(radius, 32, 32);
-  var material = new THREE.MeshPhongMaterial({ 
-    color: COLORS[post.category], // This line ensures the correct color is used
-    transparent: true,
-    opacity: 0.7
-  });
-      var sphere = new THREE.Mesh(geometry, material);
+      var radius = (post.engagement / 100) * 3 + 1;
+      var geometry = new THREE.SphereGeometry(radius, 32, 32);
+      var material = new THREE.MeshPhongMaterial({ 
+        color: COLORS[post.category],
+        transparent: false,
+        opacity: 0.7,
+        emissive: COLORS[post.category],
+        emissiveIntensity: 0.7
+      });
+       if (!materialsRef.current[post.category]) {
+        materialsRef.current[post.category] = new THREE.MeshPhongMaterial({ 
+          color: COLORS[post.category],
+          transparent: true,
+          opacity: 0.7,
+          emissive: COLORS[post.category],
+          emissiveIntensity: 0.3
+        });
+      }
+      var sphere = new THREE.Mesh(geometry, materialsRef.current[post.category]);
       
       var basePosition = categoryPosition[post.category];
       var newPosition = {
@@ -144,10 +161,9 @@ spheresRef.current = filteredPosts.map(function(post) {
         z: basePosition.z + (Math.random() * 40 - 20)
       };
 
-      if (oldPosts.find(oldPost => oldPost.id === post.id)) {
-        sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
-      } else {
-        sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
+      sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
+      
+      if (!oldPosts.find(oldPost => oldPost.id === post.id)) {
         createParticleEffect(sphere.position);
       }
 
@@ -159,55 +175,55 @@ spheresRef.current = filteredPosts.map(function(post) {
     updateConnections();
   }, [debug, filterPostsByTime, timeFilter, categoryVisibility, searchTerm, createParticleEffect, updateConnections]);
 
-  useEffect(() => {
-    debug("Component mounted");
-    function fetchRSSFeed(feed) {
-      debug("Fetching RSS feed: " + feed.url);
-      return fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.status !== 'ok' || !Array.isArray(data.items)) {
-            console.error('Invalid RSS feed data:', data);
-            return [];
-          }
-          return data.items.map(function(item) {
-            return {
-              id: item.guid || item.link,
-              title: item.title,
-              link: item.link,
-              pubDate: item.pubDate,
-              category: feed.category,
-              engagement: Math.floor(Math.random() * 100)
-            };
-          });
-        })
-        .catch(function(error) {
-          console.error('Error fetching RSS feed:', error);
+
+
+  const fetchRSSFeed = useCallback((feed) => {
+    debug("Fetching RSS feed: " + feed.url);
+    return fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.status !== 'ok' || !Array.isArray(data.items)) {
+          console.error('Invalid RSS feed data:', data);
           return [];
+        }
+        return data.items.map(function(item) {
+          return {
+            id: item.guid || item.link,
+            title: item.title,
+            link: item.link,
+            pubDate: item.pubDate,
+            category: feed.category,
+            engagement: Math.floor(Math.random() * 100)
+          };
         });
-    }
+      })
+      .catch(function(error) {
+        console.error('Error fetching RSS feed:', error);
+        return [];
+      });
+  }, [debug]);
 
-    function fetchAllFeeds() {
-      debug("Fetching all feeds");
-      Promise.all(RSS_FEEDS.map(fetchRSSFeed))
-        .then(function(allPosts) {
-          var newPosts = allPosts.flat();
-          debug("Total posts fetched: " + newPosts.length);
-          setPosts(function(prevPosts) {
-            updateVisualization(prevPosts, newPosts);
-            return newPosts;
-          });
+  const fetchAllFeeds = useCallback(() => {
+    debug("Fetching all feeds");
+    Promise.all(rssFeeds.map(fetchRSSFeed))
+      .then(function(allPosts) {
+        var newPosts = allPosts.flat();
+        debug("Total posts fetched: " + newPosts.length);
+        setPosts(function(prevPosts) {
+          updateVisualization(prevPosts, newPosts);
+          return newPosts;
         });
-    }
+      });
+  }, [rssFeeds, fetchRSSFeed, debug, updateVisualization]);
 
+  useEffect(() => {
     fetchAllFeeds();
     var interval = setInterval(fetchAllFeeds, 60000);
-
     return function() {
       debug("Component unmounting");
       clearInterval(interval);
     };
-  }, [debug, updateVisualization]);
+  }, [fetchAllFeeds, debug, updateVisualization]);
 
   useEffect(() => {
     if (!mountRef.current || posts.length === 0) return;
@@ -222,20 +238,21 @@ spheresRef.current = filteredPosts.map(function(post) {
     mount.appendChild(renderer.domElement);
 
     var controls = new OrbitControls(camera, renderer.domElement);
+    controlsRef.current = controls;
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.autoRotate = true;
     controls.autoRotateSpeed = 0.5;
 
     controls.addEventListener('start', () => {
-  setAutoRotate(false);
-  controls.autoRotate = false;
-});
+      setAutoRotate(false);
+      controls.autoRotate = false;
+    });
 
-controls.addEventListener('end', () => {
-  setAutoRotate(true);
-  controls.autoRotate = true;
-});
+    controls.addEventListener('end', () => {
+      setAutoRotate(true);
+      controls.autoRotate = true;
+    });
 
 
     var ambientLight = new THREE.AmbientLight(0x404040);
@@ -271,24 +288,37 @@ controls.addEventListener('end', () => {
         });
         document.body.style.cursor = 'pointer';
 
-        // Highlight related posts
+
+
+
+          Object.values(materialsRef.current).forEach(material => {
+          material.emissiveIntensity = 0.3; // Reset all to default
+
+        });
+
         spheresRef.current.forEach(function(sphere) {
-          if (sphere.userData.category === post.category || 
+          if (sphere === intersects[0].object) {
+            sphere.material.emissiveIntensity = 1; // Bright highlight for selected post
+            // lime sphere.material.emissive.setHex(0x00ff00);
+        
+          } else if (sphere.userData.category === post.category || 
               new Date(sphere.userData.pubDate).toDateString() === new Date(post.pubDate).toDateString()) {
-            sphere.material.emissive.setHex(0x00ff00);
-          } else {
-            sphere.material.emissive.setHex(0x000000);
+            sphere.material.emissiveIntensity = 0.7; // Less bright highlight for related posts
           }
         });
       } else {
         setTooltip(null);
         document.body.style.cursor = 'default';
         // Reset highlights
-        spheresRef.current.forEach(function(sphere) {
-          sphere.material.emissive.setHex(0x000000);
+        Object.values(materialsRef.current).forEach(material => {
+          material.emissiveIntensity = 0.3; // Reset all to default
         });
       }
     }
+
+
+
+        
 
     window.addEventListener('mousemove', onMouseMove);
 
@@ -419,6 +449,35 @@ controls.addEventListener('end', () => {
       <div style={{ position: 'absolute', bottom: 10, right: 10, color: 'white', backgroundColor: 'rgba(0,0,0,0.7)', padding: '5px', borderRadius: '5px' }}>
         Posts: {posts.length} | Visible: {spheresRef.current.length}
       </div>
+
+ <button
+        style={{
+          position: 'absolute',
+          top: '90px',
+          right: '10px',
+          padding: '5px 10px',
+          backgroundColor: '#4CAF50',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer'
+        }}
+        onClick={() => setSettingsPanelOpen(true)}
+      >
+        Open Settings
+      </button>
+
+       <SettingsPanel
+        isOpen={settingsPanelOpen}
+        onClose={() => setSettingsPanelOpen(false)}
+        autoRotate={autoRotate}
+        setAutoRotate={setAutoRotate}
+        rssFeeds={rssFeeds}
+        setRssFeeds={setRssFeeds}
+        onFeedsUpdate={fetchAllFeeds}
+      />
+
+
     </div>
   );
 };
