@@ -1,7 +1,7 @@
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { Tween, update as updateTween } from '@tweenjs/tween.js';
 
 const COLORS = {
   Technology: 0x4e79a7,
@@ -23,6 +23,7 @@ const SocialMediaVisualization = () => {
   const [tooltip, setTooltip] = useState(null);
   const [timeFilter, setTimeFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [autoRotate, setAutoRotate] = useState(true);
   const [categoryVisibility, setCategoryVisibility] = useState({
     Technology: true,
     Business: true,
@@ -32,9 +33,131 @@ const SocialMediaVisualization = () => {
   const spheresRef = useRef([]);
   const sceneRef = useRef(null);
 
-  function debug(message) {
+  const debug = useCallback((message) => {
     console.log("Debug:", message);
-  }
+  }, []);
+
+  const filterPostsByTime = useCallback((posts, filter) => {
+    debug("Filtering posts by time: " + filter);
+    var now = new Date();
+    return posts.filter(function(post) {
+      var postDate = new Date(post.pubDate);
+      switch(filter) {
+        case 'hour': return (now - postDate) < 3600000;
+        case 'day': return (now - postDate) < 86400000;
+        case 'week': return (now - postDate) < 604800000;
+        default: return true;
+      }
+    });
+  }, [debug]);
+
+  const createParticleEffect = useCallback((position) => {
+    debug("Creating particle effect at position: " + JSON.stringify(position));
+    var particleGeometry = new THREE.BufferGeometry();
+    var particleCount = 100;
+    var posArray = new Float32Array(particleCount * 3);
+    
+    for (var i = 0; i < particleCount * 3; i++) {
+      posArray[i] = (Math.random() - 0.5) * 10;
+    }
+    
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    var particleMaterial = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.1
+    });
+    
+    var particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+    particleSystem.position.copy(position);
+    sceneRef.current.add(particleSystem);
+    
+    setTimeout(function() {
+      sceneRef.current.remove(particleSystem);
+    }, 2000);
+  }, [debug]);
+
+  const updateConnections = useCallback(() => {
+    debug("Updating connections");
+    if (!sceneRef.current) return;
+
+    sceneRef.current.children = sceneRef.current.children.filter(function(child) {
+      return child.type !== 'Line';
+    });
+
+    var lineMaterial = new THREE.LineBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.3 });
+    spheresRef.current.forEach(function(sphere, index) {
+      var post = sphere.userData;
+      var relatedSpheres = spheresRef.current.filter(function(s, i) {
+        return i !== index && 
+          (s.userData.category === post.category || 
+           new Date(s.userData.pubDate).toDateString() === new Date(post.pubDate).toDateString());
+      });
+
+      relatedSpheres.forEach(function(relatedSphere) {
+        var geometry = new THREE.BufferGeometry().setFromPoints([
+          sphere.position,
+          relatedSphere.position
+        ]);
+        var line = new THREE.Line(geometry, lineMaterial);
+        sceneRef.current.add(line);
+      });
+    });
+  }, [debug]);
+
+  const updateVisualization = useCallback((oldPosts, newPosts) => {
+    debug("Updating visualization");
+    if (!sceneRef.current) return;
+
+    var filteredPosts = filterPostsByTime(newPosts, timeFilter)
+      .filter(function(post) {
+        return categoryVisibility[post.category] && 
+               post.title.toLowerCase().includes(searchTerm.toLowerCase());
+      });
+
+    debug("Filtered posts: " + filteredPosts.length);
+
+    spheresRef.current.forEach(function(sphere) {
+      sceneRef.current.remove(sphere);
+    });
+
+    var categoryPosition = {
+      Technology: { x: -50, y: 50, z: 0 },
+      Business: { x: 50, y: 50, z: 0 },
+      Science: { x: -50, y: -50, z: 0 },
+      Health: { x: 50, y: -50, z: 0 }
+    };
+
+spheresRef.current = filteredPosts.map(function(post) {
+  var radius = (post.engagement / 100) * 3 + 1;
+  var geometry = new THREE.SphereGeometry(radius, 32, 32);
+  var material = new THREE.MeshPhongMaterial({ 
+    color: COLORS[post.category], // This line ensures the correct color is used
+    transparent: true,
+    opacity: 0.7
+  });
+      var sphere = new THREE.Mesh(geometry, material);
+      
+      var basePosition = categoryPosition[post.category];
+      var newPosition = {
+        x: basePosition.x + (Math.random() * 40 - 20),
+        y: basePosition.y + (Math.random() * 40 - 20),
+        z: basePosition.z + (Math.random() * 40 - 20)
+      };
+
+      if (oldPosts.find(oldPost => oldPost.id === post.id)) {
+        sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
+      } else {
+        sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
+        createParticleEffect(sphere.position);
+      }
+
+      sphere.userData = post;
+      sceneRef.current.add(sphere);
+      return sphere;
+    });
+
+    updateConnections();
+  }, [debug, filterPostsByTime, timeFilter, categoryVisibility, searchTerm, createParticleEffect, updateConnections]);
 
   useEffect(() => {
     debug("Component mounted");
@@ -84,146 +207,36 @@ const SocialMediaVisualization = () => {
       debug("Component unmounting");
       clearInterval(interval);
     };
-  }, []);
-
-  function filterPostsByTime(posts, filter) {
-    debug("Filtering posts by time: " + filter);
-    var now = new Date();
-    return posts.filter(function(post) {
-      var postDate = new Date(post.pubDate);
-      switch(filter) {
-        case 'hour': return (now - postDate) < 3600000;
-        case 'day': return (now - postDate) < 86400000;
-        case 'week': return (now - postDate) < 604800000;
-        default: return true;
-      }
-    });
-  }
-
-  function createParticleEffect(position) {
-    debug("Creating particle effect at position: " + JSON.stringify(position));
-    var particleGeometry = new THREE.BufferGeometry();
-    var particleCount = 100;
-    var posArray = new Float32Array(particleCount * 3);
-    
-    for (var i = 0; i < particleCount * 3; i++) {
-      posArray[i] = (Math.random() - 0.5) * 10;
-    }
-    
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-    var particleMaterial = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 0.1
-    });
-    
-    var particleSystem = new THREE.Points(particleGeometry, particleMaterial);
-    particleSystem.position.copy(position);
-    sceneRef.current.add(particleSystem);
-    
-    setTimeout(function() {
-      sceneRef.current.remove(particleSystem);
-    }, 2000);
-  }
-
-  function updateVisualization(oldPosts, newPosts) {
-    debug("Updating visualization");
-    if (!sceneRef.current) return;
-
-    var filteredPosts = filterPostsByTime(newPosts, timeFilter)
-      .filter(function(post) {
-        return categoryVisibility[post.category] && 
-               post.title.toLowerCase().includes(searchTerm.toLowerCase());
-      });
-
-    debug("Filtered posts: " + filteredPosts.length);
-
-    spheresRef.current.forEach(function(sphere) {
-      sceneRef.current.remove(sphere);
-    });
-
-    var categoryPosition = {
-      Technology: { x: -50, y: 50, z: 0 },
-      Business: { x: 50, y: 50, z: 0 },
-      Science: { x: -50, y: -50, z: 0 },
-      Health: { x: 50, y: -50, z: 0 }
-    };
-
-    spheresRef.current = filteredPosts.map(function(post) {
-      var radius = (post.engagement / 100) * 3 + 1;
-      var geometry = new THREE.SphereGeometry(radius, 32, 32);
-      var material = new THREE.MeshPhongMaterial({ 
-        color: COLORS[post.category],
-        transparent: true,
-        opacity: 0.7
-      });
-      var sphere = new THREE.Mesh(geometry, material);
-      
-      var basePosition = categoryPosition[post.category];
-      var newPosition = {
-        x: basePosition.x + (Math.random() * 40 - 20),
-        y: basePosition.y + (Math.random() * 40 - 20),
-        z: basePosition.z + (Math.random() * 40 - 20)
-      };
-
-      if (oldPosts.find(oldPost => oldPost.id === post.id)) {
-        new Tween(sphere.position)
-          .to(newPosition, 1000)
-          .easing(Tween.Easing.Quadratic.Out)
-          .start();
-      } else {
-        sphere.position.set(newPosition.x, newPosition.y, newPosition.z);
-        createParticleEffect(sphere.position);
-      }
-
-      sphere.userData = post;
-      sceneRef.current.add(sphere);
-      return sphere;
-    });
-
-    updateConnections();
-  }
-   function updateConnections() {
-    debug("Updating connections");
-    if (!sceneRef.current) return;
-
-    sceneRef.current.children = sceneRef.current.children.filter(function(child) {
-      return child.type !== 'Line';
-    });
-
-    var lineMaterial = new THREE.LineBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.3 });
-    spheresRef.current.forEach(function(sphere, index) {
-      var post = sphere.userData;
-      var relatedSpheres = spheresRef.current.filter(function(s, i) {
-        return i !== index && 
-          (s.userData.category === post.category || 
-           new Date(s.userData.pubDate).toDateString() === new Date(post.pubDate).toDateString());
-      });
-
-      relatedSpheres.forEach(function(relatedSphere) {
-        var geometry = new THREE.BufferGeometry().setFromPoints([
-          sphere.position,
-          relatedSphere.position
-        ]);
-        var line = new THREE.Line(geometry, lineMaterial);
-        sceneRef.current.add(line);
-      });
-    });
-  }
+  }, [debug, updateVisualization]);
 
   useEffect(() => {
     if (!mountRef.current || posts.length === 0) return;
     debug("Setting up Three.js scene");
 
+    const mount = mountRef.current;
     var scene = new THREE.Scene();
     sceneRef.current = scene;
     var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     var renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    mountRef.current.appendChild(renderer.domElement);
+    mount.appendChild(renderer.domElement);
 
     var controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.5;
+
+    controls.addEventListener('start', () => {
+  setAutoRotate(false);
+  controls.autoRotate = false;
+});
+
+controls.addEventListener('end', () => {
+  setAutoRotate(true);
+  controls.autoRotate = true;
+});
+
 
     var ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
@@ -283,7 +296,7 @@ const SocialMediaVisualization = () => {
       var now = new Date();
       var hours = now.getHours();
       var nightColor = new THREE.Color(0x001a33);
-      var dayColor = new THREE.Color(0x87ceeb);
+      var dayColor = new THREE.Color(0x001a33);
       var t = Math.sin((hours / 24) * Math.PI);
       var color = new THREE.Color().lerpColors(nightColor, dayColor, t);
       scene.background = color;
@@ -297,7 +310,8 @@ const SocialMediaVisualization = () => {
           1 + 0.1 * Math.sin(Date.now() * 0.001 + sphere.position.x);
       });
 
-      updateTween();
+      controls.update(); // This will handle the auto-rotation
+
       updateBackgroundColor();
       controls.update();
       renderer.render(scene, camera);
@@ -313,13 +327,19 @@ const SocialMediaVisualization = () => {
 
     return function() {
       debug("Cleaning up Three.js scene");
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('resize', handleResize);
-      if (mountRef.current) {
-        mountRef.current.removeChild(renderer.domElement);
+     
+      if (mount) {
+        mount.removeChild(renderer.domElement);
       }
     };
-  }, [posts]);
+  }, [posts, debug, updateVisualization]);
+
+  // Add this effect to trigger updates when filters change
+  useEffect(() => {
+    if (posts.length > 0) {
+      updateVisualization(posts, posts);
+    }
+  }, [timeFilter, searchTerm, categoryVisibility, updateVisualization, posts]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
@@ -364,9 +384,9 @@ const SocialMediaVisualization = () => {
                 margin: '0 5px',
                 padding: '5px 10px',
                 backgroundColor: categoryVisibility[category] ? COLORS[category] : '#ccc',
-                color: 'white',
+                color: 'navy',
                 border: 'none',
-                borderRadius: '5px',
+                borderRadius: '0px',
                 cursor: 'pointer'
               }}
             >
