@@ -1,9 +1,8 @@
-
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import SettingsPanel from './SettingsPanel';
-
+import Filters from './Filters';
 
 const COLORS = {
   Technology: 0x4e79a7,
@@ -12,49 +11,27 @@ const COLORS = {
   Health: 0x76b7b2,
 };
 
-
-const SocialMediaVisualization = () => {
+const NodeGraph = () => {
   const mountRef = useRef(null);
   const [posts, setPosts] = useState([]);
+  const [filteredPosts, setFilteredPosts] = useState([]);
   const [tooltip, setTooltip] = useState(null);
-  const [timeFilter, setTimeFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [autoRotate, setAutoRotate] = useState(true)
+  const [autoRotate, setAutoRotate] = useState(true);
   const materialsRef = useRef({});
-  const [categoryVisibility, setCategoryVisibility] = useState({
-    Technology: true,
-    Business: true,
-    Science: true,
-    Health: true
-  });
   const spheresRef = useRef([]);
   const sceneRef = useRef(null);
-
-const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
-const [rssFeeds, setRssFeeds] = useState([
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [rssFeeds, setRssFeeds] = useState([
     { url: 'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml', category: 'Technology' },
     { url: 'https://feeds.bbci.co.uk/news/business/rss.xml', category: 'Business' },
     { url: 'https://www.sciencedaily.com/rss/top.xml', category: 'Science' },
     { url: 'https://www.who.int/rss-feeds/news-english.xml', category: 'Health' },
   ]);
-const controlsRef = useRef(null);
+  const controlsRef = useRef(null);
+
   const debug = useCallback((message) => {
     console.log("Debug:", message);
   }, []);
-
-  const filterPostsByTime = useCallback((posts, filter) => {
-    debug("Filtering posts by time: " + filter);
-    var now = new Date();
-    return posts.filter(function(post) {
-      var postDate = new Date(post.pubDate);
-      switch(filter) {
-        case 'hour': return (now - postDate) < 3600000;
-        case 'day': return (now - postDate) < 86400000;
-        case 'week': return (now - postDate) < 604800000;
-        default: return true;
-      }
-    });
-  }, [debug]);
 
   const createParticleEffect = useCallback((position) => {
     debug("Creating particle effect at position: " + JSON.stringify(position));
@@ -113,19 +90,13 @@ const controlsRef = useRef(null);
     debug("Updating visualization");
     if (!sceneRef.current) return;
 
-    var filteredPosts = filterPostsByTime(newPosts, timeFilter)
-      .filter(function(post) {
-        return categoryVisibility[post.category] && 
-               post.title.toLowerCase().includes(searchTerm.toLowerCase());
-      });
-
-    debug("Filtered posts: " + filteredPosts.length);
+    debug("Filtered posts: " + newPosts.length);
 
     spheresRef.current.forEach(function(sphere) {
       sceneRef.current.remove(sphere);
     });
 
- materialsRef.current = {};
+    materialsRef.current = {};
 
     var categoryPosition = {
       Technology: { x: -50, y: 50, z: 0 },
@@ -134,23 +105,16 @@ const controlsRef = useRef(null);
       Health: { x: 50, y: -50, z: 0 }
     };
 
-spheresRef.current = filteredPosts.map(function(post) {
+    spheresRef.current = newPosts.map(function(post) {
       var radius = (post.engagement / 100) * 3 + 1;
       var geometry = new THREE.SphereGeometry(radius, 32, 32);
-      var material = new THREE.MeshPhongMaterial({ 
-        color: COLORS[post.category],
-        transparent: false,
-        opacity: 0.7,
-        emissive: COLORS[post.category],
-        emissiveIntensity: 0.7
-      });
-       if (!materialsRef.current[post.category]) {
+      if (!materialsRef.current[post.category]) {
         materialsRef.current[post.category] = new THREE.MeshPhongMaterial({ 
           color: COLORS[post.category],
           transparent: true,
           opacity: 0.7,
           emissive: COLORS[post.category],
-          emissiveIntensity: 0.3
+          emissiveIntensity: 0.5
         });
       }
       var sphere = new THREE.Mesh(geometry, materialsRef.current[post.category]);
@@ -174,9 +138,7 @@ spheresRef.current = filteredPosts.map(function(post) {
     });
 
     updateConnections();
-  }, [debug, filterPostsByTime, timeFilter, categoryVisibility, searchTerm, createParticleEffect, updateConnections]);
-
-
+  }, [debug, createParticleEffect, updateConnections]);
 
   const fetchRSSFeed = useCallback((feed) => {
     debug("Fetching RSS feed: " + feed.url);
@@ -210,12 +172,9 @@ spheresRef.current = filteredPosts.map(function(post) {
       .then(function(allPosts) {
         var newPosts = allPosts.flat();
         debug("Total posts fetched: " + newPosts.length);
-        setPosts(function(prevPosts) {
-          updateVisualization(prevPosts, newPosts);
-          return newPosts;
-        });
+        setPosts(newPosts);
       });
-  }, [rssFeeds, fetchRSSFeed, debug, updateVisualization]);
+  }, [rssFeeds, fetchRSSFeed, debug]);
 
   useEffect(() => {
     fetchAllFeeds();
@@ -224,7 +183,7 @@ spheresRef.current = filteredPosts.map(function(post) {
       debug("Component unmounting");
       clearInterval(interval);
     };
-  }, [fetchAllFeeds, debug, updateVisualization]);
+  }, [fetchAllFeeds, debug]);
 
   useEffect(() => {
     if (!mountRef.current || posts.length === 0) return;
@@ -242,7 +201,7 @@ spheresRef.current = filteredPosts.map(function(post) {
     controlsRef.current = controls;
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.autoRotate = true;
+    controls.autoRotate = autoRotate;
     controls.autoRotateSpeed = 0.5;
 
     controls.addEventListener('start', () => {
@@ -255,13 +214,10 @@ spheresRef.current = filteredPosts.map(function(post) {
       controls.autoRotate = true;
     });
 
-
     var ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
     var directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
     scene.add(directionalLight);
-
-    updateVisualization([], posts);
 
     camera.position.z = 200;
 
@@ -288,20 +244,13 @@ spheresRef.current = filteredPosts.map(function(post) {
           y: event.clientY
         });
         document.body.style.cursor = 'pointer';
-
-
-
-
-          Object.values(materialsRef.current).forEach(material => {
+        Object.values(materialsRef.current).forEach(material => {
           material.emissiveIntensity = 0.3; // Reset all to default
-
         });
 
         spheresRef.current.forEach(function(sphere) {
           if (sphere === intersects[0].object) {
             sphere.material.emissiveIntensity = 1; // Bright highlight for selected post
-            // lime sphere.material.emissive.setHex(0x00ff00);
-        
           } else if (sphere.userData.category === post.category || 
               new Date(sphere.userData.pubDate).toDateString() === new Date(post.pubDate).toDateString()) {
             sphere.material.emissiveIntensity = 0.7; // Less bright highlight for related posts
@@ -316,10 +265,6 @@ spheresRef.current = filteredPosts.map(function(post) {
         });
       }
     }
-
-
-
-        
 
     window.addEventListener('mousemove', onMouseMove);
 
@@ -341,10 +286,8 @@ spheresRef.current = filteredPosts.map(function(post) {
           1 + 0.1 * Math.sin(Date.now() * 0.001 + sphere.position.x);
       });
 
-      controls.update(); // This will handle the auto-rotation
-
-      updateBackgroundColor();
       controls.update();
+      updateBackgroundColor();
       renderer.render(scene, camera);
     }
     animate();
@@ -358,26 +301,29 @@ spheresRef.current = filteredPosts.map(function(post) {
 
     return function() {
       debug("Cleaning up Three.js scene");
-     
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('resize', handleResize);
       if (mount) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [posts, debug, updateVisualization]);
+  }, [posts, debug, autoRotate]);
 
-  // Add this effect to trigger updates when filters change
   useEffect(() => {
-    if (posts.length > 0) {
-      updateVisualization(posts, posts);
+    if (filteredPosts.length > 0) {
+      updateVisualization(posts, filteredPosts);
     }
-  }, [timeFilter, searchTerm, categoryVisibility, updateVisualization, posts]);
+  }, [filteredPosts, updateVisualization, posts]);
+
+  const handleFilterChange = useCallback((newFilteredPosts) => {
+    setFilteredPosts(newFilteredPosts);
+  }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+    <div className="container">
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
       
-      {/* Legend */}
-      <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.7)', padding: 10, borderRadius: 5 }}>
+      <div className="legend">
         {Object.entries(COLORS).map(([category, color]) => (
           <div key={category} style={{ display: 'flex', alignItems: 'center', marginBottom: 5 }}>
             <div style={{ width: 20, height: 20, background: '#' + color.toString(16).padStart(6, '0'), marginRight: 10 }}></div>
@@ -386,89 +332,32 @@ spheresRef.current = filteredPosts.map(function(post) {
         ))}
       </div>
 
-      {/* Time filter buttons */}
-      <div style={{ position: 'absolute', top: 10, right: 10 }}>
-        <button onClick={() => setTimeFilter('all')}>All Time</button>
-        <button onClick={() => setTimeFilter('week')}>Last Week</button>
-        <button onClick={() => setTimeFilter('day')}>Last Day</button>
-        <button onClick={() => setTimeFilter('hour')}>Last Hour</button>
-      </div>
+      <Filters
+        posts={posts}
+        onFilterChange={handleFilterChange}
+      />
 
-      {/* Search input */}
-      <div style={{ position: 'absolute', top: 50, right: 10 }}>
-        <input 
-          type="text" 
-          placeholder="Search posts..." 
-          value={searchTerm} 
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-
-      {/* Category visibility toggles */}
-      <div style={{ position: 'absolute', bottom: 10, left: 10 }}>
-        {Object.keys(categoryVisibility).map(function(category) {
-          return (
-            <button 
-              key={category} 
-              onClick={() => setCategoryVisibility(prev => ({ ...prev, [category]: !prev[category] }))}
-              style={{
-                margin: '0 5px',
-                padding: '5px 10px',
-                backgroundColor: categoryVisibility[category] ? COLORS[category] : '#ccc',
-                color: 'navy',
-                border: 'none',
-                borderRadius: '0px',
-                cursor: 'pointer'
-              }}
-            >
-              {categoryVisibility[category] ? 'Hide' : 'Show'} {category}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Tooltip */}
       {tooltip && (
-        <div
+        <div className="tooltip"
           style={{
-            position: 'absolute',
+            zIndex: 1000,
             top: tooltip.y + 10,
             left: tooltip.x + 10,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            color: 'white',
-            padding: '5px 10px',
-            borderRadius: '5px',
-            fontSize: '14px',
             pointerEvents: 'none',
-            zIndex: 1000,
           }}
           dangerouslySetInnerHTML={{ __html: tooltip.content }}
         />
       )}
 
-      {/* Debug info */}
-      <div style={{ position: 'absolute', bottom: 10, right: 10, color: 'white', backgroundColor: 'rgba(0,0,0,0.7)', padding: '5px', borderRadius: '5px' }}>
-        Posts: {posts.length} | Visible: {spheresRef.current.length}
+      <div style={{ position: 'absolute', bottom: 10, right: 10, color: 'white', backgroundColor: 'rgba(0,0,0,0.7)', padding: '5px' }}>
+        Posts: {posts.length} | Visible: {filteredPosts.length}
       </div>
 
- <button
-        style={{
-          position: 'absolute',
-          top: '90px',
-          right: '10px',
-          padding: '5px 10px',
-          backgroundColor: '#4CAF50',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer'
-        }}
-        onClick={() => setSettingsPanelOpen(true)}
-      >
+      <button className="default panel-open" onClick={() => setSettingsPanelOpen(true)}>
         Open Settings
       </button>
 
-       <SettingsPanel
+      <SettingsPanel
         isOpen={settingsPanelOpen}
         onClose={() => setSettingsPanelOpen(false)}
         autoRotate={autoRotate}
@@ -477,10 +366,8 @@ spheresRef.current = filteredPosts.map(function(post) {
         setRssFeeds={setRssFeeds}
         onFeedsUpdate={fetchAllFeeds}
       />
-
-
     </div>
   );
 };
 
-export default SocialMediaVisualization;
+export default NodeGraph;

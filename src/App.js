@@ -1,10 +1,14 @@
 import React from 'react';
-import SocialMediaVisualization from './SocialMediaVisualization';
+import NodeGraph from './NodeGraph';
+import BackgroundAnimation from './BackgroundAnimation';
+
+
 
 function App() {
   return (
     <div className="App">
-      <SocialMediaVisualization />
+
+      <NodeGraph />
     </div>
   );
 }
