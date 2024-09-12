@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import SettingsPanel from './SettingsPanel';
 
+
 const COLORS = {
   Technology: 0x4e79a7,
   Business: 0xf28e2c,
